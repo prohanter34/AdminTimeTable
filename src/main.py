@@ -2,9 +2,10 @@ import psycopg2
 import sys
 import re
 from PyQt5 import QtCore
-from PyQt5.QtWidgets import (QApplication, QWidget,
+import datetime
+from PyQt5.QtWidgets import (QApplication, QWidget, QComboBox,
                              QTabWidget, QAbstractScrollArea,
-                             QVBoxLayout, QHBoxLayout,
+                             QVBoxLayout, QHBoxLayout, QTimeEdit,
                              QTableWidget, QGroupBox,
                          QTableWidgetItem, QPushButton, QMessageBox)
 
@@ -29,7 +30,7 @@ class MainWindow(QWidget):
     def _connect_to_db(self):
         self.conn = psycopg2.connect(database="raspisanie1",
                                      user="postgres",
-                                     password="pretki23",
+                                     password="eddeded",
                                      host="localhost",
                                      port="5432")
 
@@ -112,6 +113,9 @@ class MainWindow(QWidget):
 
     def _set_teachers_tab(self):
 
+        self.cursor.execute("SELECT subject_name FROM subjects;")
+        subjects = self.cursor.fetchall()
+
 
         self.cursor.execute("SELECT * FROM teachers JOIN subjects ON teachers.subject_name = subjects.id;")
 
@@ -132,8 +136,15 @@ class MainWindow(QWidget):
 
             self.teachers_table.setItem(i, 0, self.TabItem)
             self.teachers_table.setItem(i, 1, QTableWidgetItem(str(r[1])))
-            self.teachers_table.setItem(i, 2, QTableWidgetItem(str(r[4])))
 
+            ##########################
+            self.selectInp = QComboBox()
+            self.selectInp.addItem(str(r[4]))
+            for f in subjects:
+                self.selectInp.addItem(f[0])
+            self.teachers_table.setCellWidget(i, 2, self.selectInp)
+            #self.teachers_table.setItem(i, 2, QTableWidgetItem(str(r[4])))
+            ##############################
             self.teachers_table.setCellWidget(i, 3, joinButton)
             self.teachers_table.setCellWidget(i, 4, dellButton)
 
@@ -142,6 +153,11 @@ class MainWindow(QWidget):
 
 
         self.teachers_table.setCellWidget(len(records), 3, addButton)
+        self.selectInp = QComboBox()
+        self.selectInp.addItems([""])
+        for f in subjects:
+            self.selectInp.addItem(f[0])
+        self.teachers_table.setCellWidget(len(records), 2, self.selectInp)
         addButton.clicked.connect(lambda ch, num=len(records): self._add_teacher(num))
 
         self.teachers_table.resizeRowsToContents()
@@ -155,8 +171,14 @@ class MainWindow(QWidget):
             except:
                 row.append(None)
 
-        if row[2] != None:
-            self.cursor.execute("SELECT id FROM subjects WHERE subject_name = '{}'".format(row[2]))
+        for i in range(self.teachers_table.columnCount()):
+            try:
+                row.append(self.teachers_table.cellWidget(rowNum, i).currentText())
+            except:
+                row.append(None)
+
+        if row[7] != None:
+            self.cursor.execute("SELECT id FROM subjects WHERE subject_name = '{}'".format(row[7]))
             records = self.cursor.fetchall()
             if records != [] and row[1] != None:
                 self.cursor.execute(
@@ -181,8 +203,13 @@ class MainWindow(QWidget):
                 row.append(self.teachers_table.item(rowNum, i).text())
             except:
                 row.append(None)
-        self.cursor.execute("DELETE FROM teachers WHERE id = {};".format(row[0]))
-        self.conn.commit()
+        self.cursor.execute("SELECT * FROM timetable WHERE teacher = {}".format(row[0]))
+        records = self.cursor.fetchall()
+        if records != []:
+            QMessageBox.about(self, "Error", "Сначала удалите все занятия этого преподавателя")
+        else:
+            self.cursor.execute("DELETE FROM teachers WHERE id = {};".format(row[0]))
+            self.conn.commit()
         self._update_teachers()
 
     def _join_teacher(self, rowNum):
@@ -194,17 +221,23 @@ class MainWindow(QWidget):
             except:
                 row.append(None)
 
+        for i in range(self.teachers_table.columnCount()):
+            try:
+                row.append(self.teachers_table.cellWidget(rowNum, i).currentText())
+            except:
+                row.append(None)
+
         try:
 
             self.cursor.execute("UPDATE teachers SET full_name = '{}' WHERE id = {};".format(row[1], row[0]))
             self.conn.commit()
-            self.cursor.execute("SELECT subject_name FROM subjects WHERE subject_name = '{}';".format(row[2]))
+            self.cursor.execute("SELECT subject_name FROM subjects WHERE subject_name = '{}';".format(row[7]))
             records = list(self.cursor.fetchall())
 
             if records == []:
                 QMessageBox.about(self, "Error", "Такого предмета не существует")
             else:
-                self.cursor.execute("UPDATE teachers SET subject_name = (SELECT id FROM subjects WHERE subject_name = '{}') WHERE id = {};".format(row[2], row[0]))
+                self.cursor.execute("UPDATE teachers SET subject_name = (SELECT id FROM subjects WHERE subject_name = '{}') WHERE id = {};".format(row[7], row[0]))
                 self.conn.commit()
         except:
             QMessageBox.about(self, "Error", "Такого предмета не существует")
@@ -270,7 +303,7 @@ class MainWindow(QWidget):
                 row.append(self.subject_table.item(rowNum, i).text())
             except:
                 row.append(None)
-        print(row)
+
         if row[0] != None:
             self.cursor.execute("INSERT INTO subjects (subject_name) VALUES ('{}');".format(row[0]))
             self.conn.commit()
@@ -286,9 +319,17 @@ class MainWindow(QWidget):
                 row.append(self.subject_table.item(rowNum, i).text())
             except:
                 row.append(None)
-        print(row)
-        self.cursor.execute("DELETE FROM subjects WHERE id = {}".format(row[1]))
-        self.conn.commit()
+
+        self.cursor.execute("SELECT * FROM timetable WHERE subject_name = {}".format(row[1]))
+        inTimeTable = self.cursor.fetchall()
+        self.cursor.execute("SELECT * FROM teachers WHERE subject_name = {}".format(row[1]))
+        inTeachers = self.cursor.fetchall()
+
+        if inTimeTable != [] or inTeachers != []:
+            QMessageBox.about(self, "Error", "Сначала удалите учителей и занятия по этому предмету")
+        else:
+            self.cursor.execute("DELETE FROM subjects WHERE id = {}".format(row[1]))
+            self.conn.commit()
         self._set_subject_tab()
 
     def _set_subject_tab(self):
@@ -328,8 +369,8 @@ class MainWindow(QWidget):
         self.monday_table = QTableWidget()
         self.monday_table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
 
-        self.monday_table.setColumnCount(8)
-        self.monday_table.setHorizontalHeaderLabels(["Subject", "Time", "Room", "Teacher", "Data", "ID", "", ""])
+        self.monday_table.setColumnCount(7)
+        self.monday_table.setHorizontalHeaderLabels(["Subject", "Time", "Room", "Teacher", "ID", "", ""])
 
         self._set_monday_table(day)
 
@@ -347,27 +388,62 @@ class MainWindow(QWidget):
 
         addButton = QPushButton("Add")
 
+        self.cursor.execute("SELECT subject_name FROM subjects;")
+        subjects = self.cursor.fetchall()
+        self.cursor.execute("SELECT full_name FROM teachers;")
+        teachers = self.cursor.fetchall()
+
         for i, r in enumerate(records):
             r = list(r)
             joinButton = QPushButton("Join")
             delButton = QPushButton("Delete")
 
-            self.monday_table.setItem(i, 0, QTableWidgetItem(str(r[7])))
+
+            self.selectInp = QComboBox()
+            self.selectInp.addItem(str(r[7]))
+            for f in subjects:
+                self.selectInp.addItem(str(f[0]))
+            # self.monday_table.setItem(i, 0, QTableWidgetItem(str(r[7])))
+            self.monday_table.setCellWidget(i, 0, self.selectInp)
+
+            # self.timeInp = QTimeEdit()
+            # self.timeInp.setTime(r[4])
+            # self.monday_table.setCellWidget(i, 1, self.timeInp)
             self.monday_table.setItem(i, 1, QTableWidgetItem(str(r[4])[0:5]))
+
             self.monday_table.setItem(i, 2, QTableWidgetItem(str(r[3])))
-            self.monday_table.setItem(i, 3, QTableWidgetItem(str(r[9])))
-            self.monday_table.setItem(i, 4, QTableWidgetItem(str(r[1])))
+
+            self.selectInp = QComboBox()
+            self.selectInp.addItem(str(r[9]))
+            for f in teachers:
+                self.selectInp.addItem(str(f[0]))
+            self.monday_table.setCellWidget(i, 3, self.selectInp)
+            # self.monday_table.setItem(i, 3, QTableWidgetItem(str(r[9])))
 
             self.TabItem = QTableWidgetItem(str(r[0]))
             self.TabItem.setFlags(QtCore.Qt.ItemIsEditable)
 
-            self.monday_table.setItem(i, 5, self.TabItem)
+            self.monday_table.setItem(i, 4, self.TabItem)
 
-            self.monday_table.setCellWidget(i, 6, joinButton)
-            self.monday_table.setCellWidget(i, 7, delButton)
+            self.monday_table.setCellWidget(i, 5, joinButton)
+            self.monday_table.setCellWidget(i, 6, delButton)
 
             delButton.clicked.connect(lambda ch, num=[i, day - 1]: self._delete_day_timetable(num))
             joinButton.clicked.connect(lambda ch, num=[i, day - 1]: self._change_day_from_table(num))
+
+        self.selectInp = QComboBox()
+        self.selectInp.addItem("")
+        for f in teachers:
+            self.selectInp.addItem(str(f[0]))
+
+        self.monday_table.setCellWidget(len(records), 3, self.selectInp)
+
+        self.selectInp = QComboBox()
+        self.selectInp.addItem("")
+        for f in subjects:
+            self.selectInp.addItem(str(f[0]))
+
+        self.monday_table.setCellWidget(len(records), 0, self.selectInp)
 
         self.monday_table.setCellWidget(len(records), 6, addButton)
         addButton.clicked.connect(lambda ch, num=[len(records), day-1]: self._add_day_timetable(num))
@@ -376,43 +452,46 @@ class MainWindow(QWidget):
 
     def _add_day_timetable(self, rowNum):
         row = list()
-
         for i in range(self.arr_table[rowNum[1]].columnCount()):
             try:
                 row.append(self.arr_table[rowNum[1]].item(rowNum[0], i).text())
             except:
                 row.append(None)
-        print(row)
+        for i in range(self.arr_table[rowNum[1]].columnCount()):
+            try:
+                row.append(self.arr_table[rowNum[1]].cellWidget(rowNum[0], i).currentText())
+            except:
+                row.append(None)
 
-        if row[0] == None or row[1] == None or row[2] == None or row[3] == None or row[4] == None:
+
+
+        if row[7] == None or row[1] == None or row[2] == None or row[10] == None:
             QMessageBox.about(self, "Error", "Заполните все поля")
         else:
-            self.cursor.execute("SELECT id FROM subjects WHERE subject_name = '{}'".format(row[0]))
+            self.cursor.execute("SELECT id FROM subjects WHERE subject_name = '{}'".format(row[7]))
             records = list(self.cursor.fetchall())
-            print(records)
+
             if records == []:
                 QMessageBox.about(self, "Error", "Такого предмета не существует")
             else:
                 subject = records[0][0]
-                self.cursor.execute("SELECT id FROM teachers WHERE full_name = '{}'".format(row[3]))
+                self.cursor.execute("SELECT id FROM teachers WHERE full_name = '{}'".format(row[10]))
                 records = self.cursor.fetchall()
                 if records == []:
                     QMessageBox.about(self, "Error", "Такого учителя не существует")
                 else:
                     teacher = records[0][0]
-                    if not re.match("^\d\d\d\d\-\d\d\-\d\d$", row[4]):
-                        QMessageBox.about(self, "Error", "Введите дату в правильном формате")
+                    data = "2023-04-0" + str(rowNum[1] + 3)
+                    if not re.match("^\d\d:\d\d$", row[1]):
+                        QMessageBox.about(self, "Error", "Введите время в правильном формате")
                     else:
-                        if not re.match("^\d\d:\d\d$", row[1]):
-                            QMessageBox.about(self, "Error", "Введите время в правильном формате")
-                        else:
-                            try:
-                                int(row[2])
-                                self.cursor.execute("INSERT INTO timetable (day, subject_name, room_numb, start_time, teacher) VALUES ('{}', {}, {}, '{}', {});"
-                                                    .format(row[4], subject, row[2], row[1], teacher))
-                                self.conn.commit()
-                            except:
-                                QMessageBox.about(self, "Error", "Номер кабинета должен быть числом")
+                        try:
+                            int(row[2])
+                            self.cursor.execute("INSERT INTO timetable (day, subject_name, room_numb, start_time, teacher) VALUES ('{}', {}, {}, '{}', {});"
+                                                .format(data, subject, row[2], row[1], teacher))
+                            self.conn.commit()
+                        except:
+                            QMessageBox.about(self, "Error", "Номер кабинета должен быть числом")
 
         self._update_monday_table(rowNum[1])
 
@@ -425,7 +504,7 @@ class MainWindow(QWidget):
                 row.append(self.arr_table[rowNum[1]].item(rowNum[0], i).text())
             except:
                 row.append(None)
-        self.cursor.execute("DELETE FROM timetable WHERE id = {}".format(row[5]))
+        self.cursor.execute("DELETE FROM timetable WHERE id = {}".format(row[4]))
         self.conn.commit()
         self._update_monday_table(row[0])
 
@@ -445,23 +524,59 @@ class MainWindow(QWidget):
                 joinButton = QPushButton("Join")
                 delButton = QPushButton("Delete")
 
-                self.arr_table[j].setItem(i, 0, QTableWidgetItem(str(r[7])))
+                self.cursor.execute("SELECT subject_name FROM subjects;")
+                subjects = self.cursor.fetchall()
+                self.cursor.execute("SELECT full_name FROM teachers;")
+                teachers = self.cursor.fetchall()
+
+                self.selectInp = QComboBox()
+                self.selectInp.addItem(str(r[7]))
+                for f in subjects:
+                    self.selectInp.addItem(str(f[0]))
+
+                # self.arr_table[j].setItem(i, 0, QTableWidgetItem(str(r[7])))
+                self.arr_table[j].setCellWidget(i, 0, self.selectInp)
+
+                # self.timeInp = QTimeEdit()
+                # self.timeInp.setTime(r[4])
+                #
+                # self.arr_table[j].setCellWidget(i, 1, self.timeInp)
+
                 self.arr_table[j].setItem(i, 1, QTableWidgetItem(str(r[4])[0:5]))
                 self.arr_table[j].setItem(i, 2, QTableWidgetItem(str(r[3])))
-                self.arr_table[j].setItem(i, 3, QTableWidgetItem(str(r[9])))
-                self.arr_table[j].setItem(i, 4, QTableWidgetItem(str(r[1])))
+
+                self.selectInp = QComboBox()
+                self.selectInp.addItem(str(r[9]))
+                for f in teachers:
+                    self.selectInp.addItem(str(f[0]))
+
+                self.arr_table[j].setCellWidget(i, 3, self.selectInp)
+                # self.arr_table[j].setItem(i, 3, QTableWidgetItem(str(r[9])))
 
                 self.TabItem = QTableWidgetItem(str(r[0]))
                 self.TabItem.setFlags(QtCore.Qt.ItemIsEditable)
 
-                self.arr_table[j].setItem(i, 5, self.TabItem)
+                self.arr_table[j].setItem(i, 4, self.TabItem)
 
-                self.arr_table[j].setCellWidget(i, 6, joinButton)
-                self.arr_table[j].setCellWidget(i, 7, delButton)
+                self.arr_table[j].setCellWidget(i, 5, joinButton)
+                self.arr_table[j].setCellWidget(i, 6, delButton)
 
                 joinButton.clicked.connect(lambda ch, num=[i, j], : self._change_day_from_table(num))
                 delButton.clicked.connect(lambda ch, num=[i, j], : self._delete_day_timetable(num))
 
+            self.selectInp = QComboBox()
+            self.selectInp.addItem("")
+            for f in subjects:
+                self.selectInp.addItem(str(f[0]))
+
+            self.arr_table[j].setCellWidget(len(records), 0, self.selectInp)
+
+            self.selectInp = QComboBox()
+            self.selectInp.addItem("")
+            for f in teachers:
+                self.selectInp.addItem(str(f[0]))
+
+            self.arr_table[j].setCellWidget(len(records), 3, self.selectInp)
 
             self.arr_table[j].setCellWidget(len(records), 6, addButton)
             addButton.clicked.connect(lambda ch, num=[len(records), j], : self._add_day_timetable(num))
@@ -476,45 +591,50 @@ class MainWindow(QWidget):
                 row.append(self.arr_table[rowNum[1]].item(rowNum[0], i).text())
             except:
                 row.append(None)
-        print(row)
+        for i in range(self.arr_table[rowNum[1]].columnCount()):
+            try:
+                row.append(self.arr_table[rowNum[1]].cellWidget(rowNum[0], i).currentText())
+            except:
+                row.append(None)
+
 
         try:
             i = int(row[2])
-            j = int(row[5])
-            self.cursor.execute("UPDATE timetable SET room_numb = {} WHERE id = {}".format(row[2], row[5]))
+            # j = int(row[4])
+            self.cursor.execute("UPDATE timetable SET room_numb = {} WHERE id = {}".format(row[2], row[4]))
             self.conn.commit()
         except:
             QMessageBox.about(self, "Error", "Введите число")
 
-        if re.match("^\d\d\d\d\-\d\d\-\d\d$", row[4]):
-            self.cursor.execute("UPDATE timetable SET day = '{}' WHERE id = {}".format(row[4], row[5]))
-            self.conn.commit()
-        else:
-            QMessageBox.about(self, "Error", "Введён неправельный формат даты")
+        # if re.match("^\d\d\d\d\-\d\d\-\d\d$", row[4]):
+        #     self.cursor.execute("UPDATE timetable SET day = '{}' WHERE id = {}".format(row[4], row[5]))
+        #     self.conn.commit()
+        # else:
+        #     QMessageBox.about(self, "Error", "Введён неправельный формат даты")
 
         if re.match("^\d\d:\d\d$", row[1]):
-            self.cursor.execute("UPDATE timetable SET start_time = '{}' WHERE id = {}".format(row[1], row[5]))
+            self.cursor.execute("UPDATE timetable SET start_time = '{}' WHERE id = {}".format(row[1], row[4]))
             self.conn.commit()
         else:
             QMessageBox.about(self, "Error", "Введён неправельный формат времени")
 
-        self.cursor.execute("SELECT subject_name FROM subjects WHERE subject_name = '{}';".format(row[0]))
+        self.cursor.execute("SELECT subject_name FROM subjects WHERE subject_name = '{}';".format(row[7]))
         records = list(self.cursor.fetchall())
-        print(records)
+
         if records == []:
             QMessageBox.about(self, "Error", "Такого предмета не существует")
         else:
             self.cursor.execute(
                 "UPDATE timetable SET subject_name = (SELECT id FROM subjects WHERE subject_name = '{}') WHERE id = {};".format(
-                    row[0], row[5]))
+                    row[7], row[4]))
             self.conn.commit()
 
-        self.cursor.execute("SELECT full_name FROM teachers WHERE full_name = '{}'".format(row[3]))
+        self.cursor.execute("SELECT full_name FROM teachers WHERE full_name = '{}'".format(row[10]))
         records = list(self.cursor.fetchall())
         if records == []:
             QMessageBox.about(self, "Error", "Такого учителя не существует")
         else:
-            self.cursor.execute("UPDATE timetable SET teacher = (SELECT id FROM teachers WHERE full_name = '{}') WHERE id = {};".format(row[3], row[5]))
+            self.cursor.execute("UPDATE timetable SET teacher = (SELECT id FROM teachers WHERE full_name = '{}') WHERE id = {};".format(row[10], row[4]))
 
 
     def _update_shedule(self, i):
