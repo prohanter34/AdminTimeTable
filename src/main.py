@@ -30,7 +30,7 @@ class MainWindow(QWidget):
     def _connect_to_db(self):
         self.conn = psycopg2.connect(database="raspisanie1",
                                      user="postgres",
-                                     password="eddeded",
+                                     password="dffrfr",
                                      host="localhost",
                                      port="5432")
 
@@ -481,11 +481,16 @@ class MainWindow(QWidget):
                     QMessageBox.about(self, "Error", "Такого учителя не существует")
                 else:
                     teacher = records[0][0]
-                    data = "2023-04-0" + str(rowNum[1] + 3)
+                    data = "2023-04-" + str(rowNum[1] + 10)
                     if not re.match("^\d\d:\d\d$", row[1]):
                         QMessageBox.about(self, "Error", "Введите время в правильном формате")
                     else:
                         try:
+                            print(data)
+                            print(subject)
+                            print(row[2])
+                            print(row[1])
+                            print(teacher)
                             int(row[2])
                             self.cursor.execute("INSERT INTO timetable (day, subject_name, room_numb, start_time, teacher) VALUES ('{}', {}, {}, '{}', {});"
                                                 .format(data, subject, row[2], row[1], teacher))
