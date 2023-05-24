@@ -2,7 +2,6 @@ import psycopg2
 import sys
 import re
 from PyQt5 import QtCore
-import datetime
 from PyQt5.QtWidgets import (QApplication, QWidget, QComboBox,
                              QTabWidget, QAbstractScrollArea,
                              QVBoxLayout, QHBoxLayout, QTimeEdit,
@@ -30,7 +29,7 @@ class MainWindow(QWidget):
     def _connect_to_db(self):
         self.conn = psycopg2.connect(database="raspisanie1",
                                      user="postgres",
-                                     password="dffrfr",
+                                     password="pretki23",
                                      host="localhost",
                                      port="5432")
 
@@ -137,14 +136,13 @@ class MainWindow(QWidget):
             self.teachers_table.setItem(i, 0, self.TabItem)
             self.teachers_table.setItem(i, 1, QTableWidgetItem(str(r[1])))
 
-            ##########################
+
             self.selectInp = QComboBox()
             self.selectInp.addItem(str(r[4]))
             for f in subjects:
                 self.selectInp.addItem(f[0])
             self.teachers_table.setCellWidget(i, 2, self.selectInp)
-            #self.teachers_table.setItem(i, 2, QTableWidgetItem(str(r[4])))
-            ##############################
+
             self.teachers_table.setCellWidget(i, 3, joinButton)
             self.teachers_table.setCellWidget(i, 4, dellButton)
 
@@ -481,7 +479,7 @@ class MainWindow(QWidget):
                     QMessageBox.about(self, "Error", "Такого учителя не существует")
                 else:
                     teacher = records[0][0]
-                    data = "2023-04-" + str(rowNum[1] + 10)
+                    data = "2023-05-" + str(rowNum[1] + 20)
                     if not re.match("^\d\d:\d\d$", row[1]):
                         QMessageBox.about(self, "Error", "Введите время в правильном формате")
                     else:
@@ -516,7 +514,11 @@ class MainWindow(QWidget):
     def _update_monday_table(self, day):
         for j in range(0, 6):
 
-            self.cursor.execute("SELECT * FROM timetable JOIN subjects on timetable.subject_name = subjects.id JOIN teachers ON teachers.id = timetable.teacher WHERE extract(week from day)=(SELECT EXTRACT (WEEK FROM NOW())) AND extract(dow from day)={} ORDER BY start_time;".format(j+1))
+            self.cursor.execute("SELECT * FROM timetable JOIN subjects on "
+                                "timetable.subject_name = subjects.id JOIN"
+                                " teachers ON teachers.id = timetable.teacher "
+                                "WHERE extract(week from day)=(SELECT EXTRACT (WEEK FROM NOW())) AND extract(dow from day)={} "
+                                "ORDER BY start_time;".format(j+1))
             records = list(self.cursor.fetchall())
 
             self.arr_table[j].setRowCount(0)
